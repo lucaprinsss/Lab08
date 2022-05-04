@@ -5,14 +5,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import it.polito.tdp.extflightdelays.model.Airline;
 import it.polito.tdp.extflightdelays.model.Airport;
 import it.polito.tdp.extflightdelays.model.Coppia;
 import it.polito.tdp.extflightdelays.model.Flight;
 
+@SuppressWarnings("unused")
 public class ExtFlightDelaysDAO {
 
 	public List<Airline> loadAllAirlines() {
@@ -84,32 +87,87 @@ public class ExtFlightDelaysDAO {
 	}
 	
 
-	public List<Coppia> getCollegamentiDistantiAlmeno(int distMin, Airport aero) {
-		String sql = "SELECT DESTINATION_AIRPORT_ID,ORIGIN_AIRPORT_ID, AVG(DISTANCE) AS DISTANCE "
-				+ "FROM flights "
-				+ "WHERE DESTINATION_AIRPORT_ID=? OR ORIGIN_AIRPORT_ID=? "
-				+ "GROUP BY DESTINATION_AIRPORT_ID,ORIGIN_AIRPORT_ID ";
+	public List<Coppia> getCollegamentiDistantiAlmenoSemplice(int distMin, Airport aero) {
+		String sql = "SELECT DESTINATION_AIRPORT_ID,ORIGIN_AIRPORT_ID, AVG(DISTANCE) AS DISTANCE "  //sto facendo la media sui viaggi di andata e di ritorno ma non tutti insieme
+				+ "FROM flights "                                                                   //mi ritorna le tratte di andata e ritorno separate e le aggiungo allo stesso arco due volte 
+				+ "WHERE DESTINATION_AIRPORT_ID=? OR ORIGIN_AIRPORT_ID=? "                    	    //(in teoria non me lo fa aggiungere il secodo perché esiste già il primo)
+				+ "GROUP BY DESTINATION_AIRPORT_ID,ORIGIN_AIRPORT_ID ";                             //Vale questo solo perché non è un grafo orientato
 		List<Coppia> result = new ArrayList<Coppia>();
-		try {
+		try { 
 			Connection conn = ConnectDB.getConnection();
 			PreparedStatement st = conn.prepareStatement(sql);
 			st.setInt(1, aero.getId());
+			st.setInt(2, aero.getId());
 			ResultSet rs = st.executeQuery();
 			while (rs.next()) {
-				if(rs.getInt("ORIGIN_AIRPORT_ID")!=aero.getId() ) {
-					Coppia c=new Coppia(rs.getInt("ORIGIN_AIRPORT_ID"), rs.getInt("DISTANCE"));
-				}else {
-					Coppia c=new Coppia(rs.getInt("DESTINATION_AIRPORT_ID"), rs.getInt("DISTANCE"));
+				if(rs.getInt("DISTANCE")>=distMin) {
+					if(rs.getInt("ORIGIN_AIRPORT_ID")!=aero.getId() ) {
+						Coppia c=new Coppia(rs.getInt("ORIGIN_AIRPORT_ID"), rs.getInt("DISTANCE"));
+						result.add(c);
+					} else {
+						Coppia c=new Coppia(rs.getInt("DESTINATION_AIRPORT_ID"), rs.getInt("DISTANCE"));
+						result.add(c);
+					}
 				}
-				
-				result.add(c);
-			}			
+			}
 			conn.close();
 			return result;
 		} catch (SQLException e) {
 			e.printStackTrace();
 			System.out.println("Errore col database");
-			throw new RuntimeException("Error Connection Database");
+		throw new RuntimeException("Error Connection Database");
+		}
+	}
+	
+	public List<Coppia> getCollegamentiDistantiAlmeno(int distMin, Airport aero) {
+		String sql = "SELECT DESTINATION_AIRPORT_ID,ORIGIN_AIRPORT_ID, DISTANCE "
+				+ "FROM flights "                                                              
+				+ "WHERE DESTINATION_AIRPORT_ID=? OR ORIGIN_AIRPORT_ID=? ";
+		List<Coppia> result = new ArrayList<Coppia>();
+		try { 
+			Connection conn = ConnectDB.getConnection();
+			PreparedStatement st = conn.prepareStatement(sql);
+			st.setInt(1, aero.getId());
+			st.setInt(2, aero.getId());
+			ResultSet rs = st.executeQuery();
+			
+			while (rs.next()) {
+				if(rs.getInt("ORIGIN_AIRPORT_ID")==aero.getId() ) {
+					Coppia c=new Coppia(rs.getInt("DESTINATION_AIRPORT_ID"), rs.getInt("DISTANCE"));
+					result.add(c);
+				} else {
+					Coppia c=new Coppia(rs.getInt("ORIGIN_AIRPORT_ID"), rs.getInt("DISTANCE"));						
+					result.add(c);
+				}
+			}
+			conn.close();
+			
+			result.sort(new ComparatoreCoppie());
+			
+			List<Coppia> lista=new ArrayList<Coppia>();
+			Map<Integer,Coppia> mappa=new HashMap<Integer, Coppia>();
+			
+			for(Coppia c:result) {       //SALVO NELLA MAPPA<ID, COPPIA> DOVE COPPIA CONTIENE, AL POSTO DELL'ARRIVO, UN CONATTORE E , AL POSTO DELLA DISTANZA, LA SOMMA DI TUTTE LE DISTANZE DI QUELLA TRATTA
+				if(!mappa.containsKey(c.getArrivo())) {
+					mappa.put(c.getArrivo(), new Coppia(1,c.getDistanza()));
+				} else {
+					Coppia vecchia=mappa.get(c.getArrivo());
+					mappa.remove(c.getArrivo());
+					mappa.put(c.getArrivo(), new Coppia(vecchia.getArrivo()+1,vecchia.getDistanza()+c.getDistanza()));
+				}
+			}
+			
+			for(Integer id:mappa.keySet()) {
+				int distanza=mappa.get(id).getDistanza()/mappa.get(id).getArrivo();
+				if(distanza>distMin)
+					lista.add(new Coppia(id,distanza));
+			}
+			
+			return lista;
+		} catch (SQLException e) {
+			e.printStackTrace();
+			System.out.println("Errore col database");
+		throw new RuntimeException("Error Connection Database");
 		}
 	}
 }

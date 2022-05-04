@@ -5,8 +5,18 @@
 package it.polito.tdp.extflightdelays;
 
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.ResourceBundle;
+import java.util.Set;
 
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DefaultWeightedEdge;
+import org.jgrapht.graph.SimpleWeightedGraph;
+
+import it.polito.tdp.extflightdelays.model.Airport;
 import it.polito.tdp.extflightdelays.model.Model;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -35,8 +45,24 @@ public class FXMLController {
 
     @FXML
     void doAnalizzaAeroporti(ActionEvent event) {
+    	txtResult.clear();
     	int x=Integer.parseInt(distanzaMinima.getText());
-    	model.creaGrafoDistanzaMin(x);
+    	Graph<Airport, DefaultWeightedEdge> grafo=new SimpleWeightedGraph<Airport, DefaultWeightedEdge>(DefaultWeightedEdge.class);
+    	grafo=model.creaGrafoDistanzaMin(x);
+    	txtResult.setText("Numero vertici: "+grafo.vertexSet().size()+"\nNumero archi: "+
+    				grafo.edgeSet().size()+"\n");
+    	
+    	Set<DefaultWeightedEdge> set=new HashSet<DefaultWeightedEdge>(grafo.edgeSet());
+    	List<DefaultWeightedEdge> lista=new ArrayList<DefaultWeightedEdge>(set);
+    	Collections.sort(lista, new comparatoreArchi(grafo));
+    	
+    	for(DefaultWeightedEdge arco : lista) {
+    		String partenza=grafo.getEdgeSource(arco).getId()+"";
+    		String arrivo=grafo.getEdgeTarget(arco).getId()+"";
+    		String peso=grafo.getEdgeWeight(arco)+"";
+    		txtResult.appendText(partenza+" "+arrivo+" "+peso+"\n");
+    	}
+    		
     }
 
     @FXML // This method is called by the FXMLLoader when initialization is complete
